@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Reading Tracker</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+    <div class="nav-container">
+        <h2>📚 Reading Tracker</h2>
+        <div class="nav-menu">
+            <a href="dashboard.html" class="active">Dashboard</a>
+            <a href="my_books.html">My Books</a>
+            <a href="profile.html">Profile</a>
+        </div>
+        <div class="nav-actions">
+            <button id="darkModeToggle" class="btn-icon">🌙</button>
+            <a href="profile.html" class="user-profile-link">
+                <span id="userInfo" class="user-info"></span>
+            </a>
+            <button onclick="logout()" class="btn btn-secondary btn-small">Logout</button>
+        </div>
+    </div>
+</nav>
+
+    <div class="container">
+        <!-- Reading Goals Section -->
+        <div class="goals-section">
+            <div class="goal-card">
+                <h3>📅 Monthly Goal</h3>
+                <div id="monthlyGoal">
+                    <p>No goal set</p>
+                    <button onclick="openGoalModal('monthly')" class="btn btn-small btn-primary">Set Goal</button>
+                </div>
+            </div>
+            <div class="goal-card">
+                <h3>🎯 Yearly Goal</h3>
+                <div id="yearlyGoal">
+                    <p>No goal set</p>
+                    <button onclick="openGoalModal('yearly')" class="btn btn-small btn-primary">Set Goal</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics Section -->
+        <div class="stats-container">
+            <div class="stat-card">
+                <h3>Total Books</h3>
+                <p class="stat-number" id="totalBooks">0</p>
+            </div>
+            <div class="stat-card">
+                <h3>Completed</h3>
+                <p class="stat-number" id="completedBooks">0</p>
+            </div>
+            <div class="stat-card">
+                <h3>In Progress</h3>
+                <p class="stat-number" id="inProgressBooks">0</p>
+            </div>
+            <div class="stat-card">
+                <h3>Pages Read</h3>
+                <p class="stat-number" id="totalPagesRead">0</p>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="charts-container">
+            <div class="chart-box">
+                <h3>Reading Progress</h3>
+                <canvas id="progressChart"></canvas>
+            </div>
+            <div class="chart-box">
+                <h3>Books by Genre</h3>
+                <canvas id="genreChart"></canvas>
+            </div>
+        </div>
+
+
+
+    
+
+       <!-- Quick Actions -->
+<div class="quick-actions">
+    <a href="addbook.html" class="btn btn-primary btn-large">+ Add New Book</a>
+    <a href="my_books.html" class="btn btn-secondary btn-large">View All Books</a>
+</div>
+
+    <!-- Goal Setting Modal -->
+    <div id="goalModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeGoalModal()">&times;</span>
+            <h2>Set Reading Goal</h2>
+            <form id="goalForm" onsubmit="handleGoalSubmit(event)">
+                <input type="hidden" id="goalType" name="goal_type">
+                <div class="form-group">
+                    <label for="targetBooks">Target Books</label>
+                    <input type="number" id="targetBooks" name="target_books" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="targetPages">Target Pages</label>
+                    <input type="number" id="targetPages" name="target_pages" min="1">
+                </div>
+                <button type="submit" class="btn btn-primary">Save Goal</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+       let progressChart, genreChart;
+
+document.addEventListener('DOMContentLoaded', function() {
+    checkAuth();
+    loadUserInfo();
+    loadStatistics();
+    loadGoals();
+    initDarkMode();
+});
+
+        function checkAuth() {
+            fetch('auth_check.php')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.authenticated) {
+                        window.location.href = 'login.html';
+                    }
+                })
+                .catch(() => {
+                    window.location.href = 'login.html';
+                });
+        }
+
+        function loadUserInfo() {
+            fetch('auth_check.php')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.user) {
+                        document.getElementById('userInfo').textContent = data.user.username;
+                    }
+                });
+        }
+
+       function loadStatistics() {
+    fetch('get_books.php')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const books = data.books;
+                updateStatistics(books);
+                updateCharts(books);
+            }
+        });
+}
+
+        function updateStatistics(books) {
+            const total = books.length;
+            const completed = books.filter(b => b.pages_read >= b.total_pages).length;
+            const inProgress = books.filter(b => b.pages_read > 0 && b.pages_read < b.total_pages).length;
+            const totalPages = books.reduce((sum, b) => sum + parseInt(b.pages_read), 0);
+            
+            document.getElementById('totalBooks').textContent = total;
+            document.getElementById('completedBooks').textContent = completed;
+            document.getElementById('inProgressBooks').textContent = inProgress;
+            document.getElementById('totalPagesRead').textContent = totalPages;
+        }
+
+        function updateCharts(books) {
+    // Progress Chart (Doughnut)
+    const completed = books.filter(b => b.pages_read >= b.total_pages).length;
+    const reading = books.filter(b => b.pages_read > 0 && b.pages_read < b.total_pages).length;
+    const unstarted = books.filter(b => b.pages_read === 0).length;
+    
+    const progressCtx = document.getElementById('progressChart');
+    if (progressCtx) {
+        const ctx = progressCtx.getContext('2d');
+        if (progressChart) progressChart.destroy();
+        
+        progressChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Completed', 'Reading', 'Not Started'],
+                datasets: [{
+                    data: [completed, reading, unstarted],
+                    backgroundColor: ['#28a745', '#667eea', '#dc3545'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 15,
+                            font: { size: 12 }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // Genre Chart (Bar)
+    const genreCount = {};
+    books.forEach(book => {
+        if (book.genre) {
+            genreCount[book.genre] = (genreCount[book.genre] || 0) + 1;
+        }
+    });
+    
+    const genreCtx = document.getElementById('genreChart');
+    if (genreCtx) {
+        const ctx = genreCtx.getContext('2d');
+        if (genreChart) genreChart.destroy();
+        
+        const genres = Object.keys(genreCount);
+        const counts = Object.values(genreCount);
+        
+        genreChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: genres.length > 0 ? genres : ['No Data'],
+                datasets: [{
+                    label: 'Books',
+                    data: counts.length > 0 ? counts : [0],
+                    backgroundColor: '#764ba2',
+                    borderRadius: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { 
+                            stepSize: 1,
+                            font: { size: 11 }
+                        },
+                        grid: {
+                            display: true,
+                            drawBorder: false
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        },
+                        ticks: {
+                            font: { size: 11 }
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+            
+            // Genre Chart
+            const genreCount = {};
+            books.forEach(book => {
+                if (book.genre) {
+                    genreCount[book.genre] = (genreCount[book.genre] || 0) + 1;
+                }
+            });
+            
+            const genreCtx = document.getElementById('genreChart').getContext('2d');
+            if (genreChart) genreChart.destroy();
+            genreChart = new Chart(genreCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(genreCount),
+                    datasets: [{
+                        label: 'Books',
+                        data: Object.values(genreCount),
+                        backgroundColor: '#764ba2'
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { stepSize: 1 }
+                        }
+                    }
+                }
+            });
+        
+
+       
+
+        function loadGoals() {
+    fetch('get_goals.php')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                if (data.monthly) displayGoal('monthly', data.monthly);
+                if (data.yearly) displayGoal('yearly', data.yearly);
+            }  // ← FIXED!
+        });
+}
+
+        function displayGoal(type, goal) {
+            const elem = document.getElementById(type + 'Goal');
+            const booksProgress = goal.current_books || 0;
+            const pagesProgress = goal.current_pages || 0;
+            
+            elem.innerHTML = `
+                <p><strong>Books:</strong> ${booksProgress} / ${goal.target_books || 0}</p>
+                <div class="mini-progress"><div style="width: ${(booksProgress / goal.target_books * 100)}%"></div></div>
+                <p><strong>Pages:</strong> ${pagesProgress} / ${goal.target_pages || 0}</p>
+                <div class="mini-progress"><div style="width: ${(pagesProgress / goal.target_pages * 100)}%"></div></div>
+                <button onclick="openGoalModal('${type}')" class="btn btn-small btn-secondary">Update</button>
+            `;
+        }
+
+        function openGoalModal(type) {
+            document.getElementById('goalType').value = type;
+            document.getElementById('goalModal').style.display = 'block';
+        }
+
+        function closeGoalModal() {
+            document.getElementById('goalModal').style.display = 'none';
+        }
+
+        function handleGoalSubmit(event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            
+            fetch('save_goal.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showMessage('Goal saved!', 'success');
+                    closeGoalModal();
+                    loadGoals();
+                } else {
+                    showMessage(data.message, 'error');
+                }
+            });
+        }
+
+        
+
+        function logout() {
+            fetch('auth_logout.php')
+                .then(() => {
+                    window.location.href = 'login.html';
+                });
+        }
+
+        function initDarkMode() {
+            const toggle = document.getElementById('darkModeToggle');
+            const isDark = localStorage.getItem('darkMode') === 'true';
+            
+            if (isDark) {
+                document.body.classList.add('dark-mode');
+                toggle.textContent = '☀️';
+            }
+            
+            toggle.addEventListener('click', () => {
+                document.body.classList.toggle('dark-mode');
+                const nowDark = document.body.classList.contains('dark-mode');
+                localStorage.setItem('darkMode', nowDark);
+                toggle.textContent = nowDark ? '☀️' : '🌙';
+                
+                // Save to server
+                fetch('save_dark_mode.php', {
+                    method: 'POST',
+                    body: JSON.stringify({ dark_mode: nowDark }),
+                    headers: { 'Content-Type': 'application/json' }
+                });
+            });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        window.onclick = function(event) {
+            if (event.target == document.getElementById('goalModal')) {
+                closeGoalModal();
+            }
+        }
+    </script>
+</body>
+</html>

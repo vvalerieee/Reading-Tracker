@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Books - Reading Tracker</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <h2>📚 Reading Tracker</h2>
+            <div class="nav-menu">
+                <a href="dashboard.html">Dashboard</a>
+                <a href="my_books.html" class="active">My Books</a>
+                <a href="profile.html">Profile</a>
+            </div>
+            <div class="nav-actions">
+                <button id="darkModeToggle" class="btn-icon" title="Toggle Dark Mode">🌙</button>
+                <a href="profile.html" class="user-profile-link">
+                    <span id="userInfo" class="user-info"></span>
+                </a>
+                <button onclick="logout()" class="btn btn-secondary btn-small">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- Search and Filter -->
+        <div class="action-bar">
+            <div class="search-filter">
+                <input type="text" id="searchInput" placeholder="🔍 Search books..." onkeyup="filterBooks()">
+                <select id="genreFilter" onchange="filterBooks()">
+                    <option value="">All Genres</option>
+                </select>
+                <select id="statusFilter" onchange="filterBooks()">
+                    <option value="">All Status</option>
+                    <option value="completed">Completed</option>
+                    <option value="reading">Reading</option>
+                    <option value="unstarted">Not Started</option>
+                </select>
+            </div>
+            <a href="addbook.html" class="btn btn-primary">+ Add New Book</a>
+        </div>
+
+        <!-- Books List -->
+        <div id="booksList" class="books-grid"></div>
+        <div id="emptyState" class="empty-state" style="display: none;">
+            <p>📚 No books found!</p>
+            <a href="addbook.html" class="btn btn-primary">Add Your First Book</a>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        let allBooks = [];
+
+        document.addEventListener('DOMContentLoaded', function() {
+            checkAuth();
+            loadUserInfo();
+            loadBooks();
+            loadGenres();
+            initDarkMode();
+        });
+
+        function checkAuth() {
+            fetch('auth_check.php')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.authenticated) {
+                        window.location.href = 'login.html';
+                    }
+                })
+                .catch(() => {
+                    window.location.href = 'login.html';
+                });
+        }
+
+        function loadUserInfo() {
+            fetch('auth_check.php')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.user) {
+                        document.getElementById('userInfo').textContent = data.user.username;
+                    }
+                });
+        }
+
+        function loadBooks() {
+            fetch('get_books.php')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        allBooks = data.books;
+                        displayBooks(allBooks);
+                    }
+                });
+        }
+
+        function displayBooks(books) {
+            const booksList = document.getElementById('booksList');
+            const emptyState = document.getElementById('emptyState');
+            
+            if (books.length === 0) {
+                booksList.innerHTML = '';
+                emptyState.style.display = 'block';
+                return;
+            }
+            
+            emptyState.style.display = 'none';
+            booksList.innerHTML = '';
+            
+            books.forEach(book => {
+                const progress = (book.pages_read / book.total_pages * 100).toFixed(1);
+                const isCompleted = book.pages_read >= book.total_pages;
+                
+                const bookCard = document.createElement('div');
+                bookCard.className = 'book-card';
+                bookCard.innerHTML = `
+                    ${book.cover_image ? `<img src="uploads/${book.cover_image}" alt="${book.title}" class="book-cover">` : ''}
+                    <div class="book-header">
+                        <h3>${escapeHtml(book.title)}</h3>
+                        ${isCompleted ? '<span class="badge badge-success">✓ Completed</span>' : '<span class="badge badge-info">Reading</span>'}
+                    </div>
+                    <p class="book-author">by ${escapeHtml(book.author)}</p>
+                    ${book.genre ? `<span class="genre-tag">${escapeHtml(book.genre)}</span>` : ''}
+                    <div class="progress-info">
+                        <p>${book.pages_read} / ${book.total_pages} pages</p>
+                        <p class="progress-percent">${progress}%</p>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${progress}%"></div>
+                    </div>
+                    ${book.rating ? `<div class="rating">${'⭐'.repeat(book.rating)}</div>` : ''}
+                    ${book.notes ? `<p class="book-notes">"${escapeHtml(book.notes.substring(0, 100))}${book.notes.length > 100 ? '...' : ''}"</p>` : ''}
+                    <div class="book-actions">
+                        <a href="editbook.html?id=${book.id}" class="btn btn-small btn-secondary">Edit</a>
+                        <button onclick="deleteBook(${book.id})" class="btn btn-small btn-danger">Delete</button>
+                    </div>
+                `;
+                booksList.appendChild(bookCard);
+            });
+        }
+
+        function filterBooks() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const genre = document.getElementById('genreFilter').value;
+            const status = document.getElementById('statusFilter').value;
+            
+            let filtered = allBooks.filter(book => {
+                const matchSearch = book.title.toLowerCase().includes(search) || 
+                                  book.author.toLowerCase().includes(search);
+                const matchGenre = !genre || book.genre === genre;
+                
+                let matchStatus = true;
+                if (status === 'completed') matchStatus = book.pages_read >= book.total_pages;
+                else if (status === 'reading') matchStatus = book.pages_read > 0 && book.pages_read < book.total_pages;
+                else if (status === 'unstarted') matchStatus = book.pages_read === 0;
+                
+                return matchSearch && matchGenre && matchStatus;
+            });
+            
+            displayBooks(filtered);
+        }
+
+        function loadGenres() {
+            fetch('get_genres.php')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const select = document.getElementById('genreFilter');
+                        data.genres.forEach(genre => {
+                            const option = document.createElement('option');
+                            option.value = genre.name;
+                            option.textContent = genre.name;
+                            select.appendChild(option);
+                        });
+                    }
+                });
+        }
+
+        function deleteBook(id) {
+            if (!confirm('Delete this book?')) return;
+            
+            const formData = new FormData();
+            formData.append('id', id);
+            
+            fetch('delete_book.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showMessage('Book deleted!', 'success');
+                    loadBooks();
+                }
+            });
+        }
+
+        function logout() {
+            fetch('auth_logout.php')
+                .then(() => {
+                    window.location.href = 'login.html';
+                });
+        }
+
+        function initDarkMode() {
+            const toggle = document.getElementById('darkModeToggle');
+            const isDark = localStorage.getItem('darkMode') === 'true';
+            
+            if (isDark) {
+                document.body.classList.add('dark-mode');
+                toggle.textContent = '☀️';
+            }
+            
+            toggle.addEventListener('click', () => {
+                document.body.classList.toggle('dark-mode');
+                const nowDark = document.body.classList.contains('dark-mode');
+                localStorage.setItem('darkMode', nowDark);
+                toggle.textContent = nowDark ? '☀️' : '🌙';
+            });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,153 @@
+-- =====================================================
+-- ENHANCED READING TRACKER DATABASE SETUP
+-- =====================================================
+
+-- Create the database
+CREATE DATABASE IF NOT EXISTS reading_tracker;
+USE reading_tracker;
+
+-- =====================================================
+-- USERS TABLE (Authentication)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    dark_mode BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+-- BOOKS TABLE (Enhanced with new fields)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS books (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    author VARCHAR(255) NOT NULL,
+    total_pages INT NOT NULL,
+    pages_read INT NOT NULL DEFAULT 0,
+    genre VARCHAR(100) DEFAULT NULL,
+    cover_image VARCHAR(255) DEFAULT NULL,
+    notes TEXT DEFAULT NULL,
+    rating INT DEFAULT NULL CHECK (rating >= 1 AND rating <= 5),
+    start_date DATE DEFAULT NULL,
+    finish_date DATE DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+-- READING GOALS TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS reading_goals (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    goal_type ENUM('monthly', 'yearly') NOT NULL,
+    target_books INT DEFAULT NULL,
+    target_pages INT DEFAULT NULL,
+    year INT NOT NULL,
+    month INT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_goal (user_id, goal_type, year, month)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+-- GENRES/CATEGORIES TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS genres (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    color VARCHAR(7) DEFAULT '#667eea'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Insert default genres
+INSERT INTO genres (name, color) VALUES
+('Fiction', '#667eea'),
+('Non-Fiction', '#764ba2'),
+('Mystery', '#f093fb'),
+('Science Fiction', '#4facfe'),
+('Fantasy', '#43e97b'),
+('Romance', '#fa709a'),
+('Biography', '#feca57'),
+('History', '#ee5a6f'),
+('Self-Help', '#00d2ff'),
+('Business', '#3a1c71');
+
+-- =====================================================
+-- INSERT SAMPLE USER (password: "demo123")
+-- Password is hashed using PHP password_hash()
+-- =====================================================
+INSERT INTO users (username, email, password) VALUES
+('demo_user', 'demo@example.com', '$2y$10$YourHashedPasswordHere');
+
+-- =====================================================
+-- SAMPLE BOOKS (linked to user_id = 1)
+-- =====================================================
+INSERT INTO books (user_id, title, author, total_pages, pages_read, genre, rating, notes) VALUES
+(1, 'The Great Gatsby', 'F. Scott Fitzgerald', 180, 180, 'Fiction', 5, 'A timeless classic about the American Dream.'),
+(1, 'To Kill a Mockingbird', 'Harper Lee', 324, 200, 'Fiction', 5, 'Powerful story about justice and morality.'),
+(1, '1984', 'George Orwell', 328, 150, 'Science Fiction', 4, 'Dystopian masterpiece, still relevant today.'),
+(1, 'Sapiens', 'Yuval Noah Harari', 443, 100, 'Non-Fiction', 5, 'Fascinating history of humankind.'),
+(1, 'The Hobbit', 'J.R.R. Tolkien', 310, 0, 'Fantasy', NULL, NULL);
+
+-- =====================================================
+-- SAMPLE READING GOALS
+-- =====================================================
+INSERT INTO reading_goals (user_id, goal_type, target_books, target_pages, year, month) VALUES
+(1, 'monthly', 3, 1000, 2024, 11),
+(1, 'yearly', 30, 10000, 2024, NULL);
+
+-- =====================================================
+-- USEFUL QUERIES
+-- =====================================================
+
+-- View all books with user info
+SELECT b.*, u.username 
+FROM books b 
+JOIN users u ON b.user_id = u.id 
+ORDER BY b.created_at DESC;
+
+-- Get reading statistics for a user
+SELECT 
+    COUNT(*) as total_books,
+    SUM(CASE WHEN pages_read >= total_pages THEN 1 ELSE 0 END) as completed_books,
+    SUM(pages_read) as total_pages_read,
+    AVG(rating) as avg_rating
+FROM books 
+WHERE user_id = 1;
+
+-- Get books by genre
+SELECT genre, COUNT(*) as count 
+FROM books 
+WHERE user_id = 1 
+GROUP BY genre;
+
+-- Check reading goal progress (monthly)
+SELECT 
+    g.target_books,
+    g.target_pages,
+    COUNT(b.id) as books_read,
+    SUM(b.pages_read) as pages_read,
+    ROUND((COUNT(b.id) / g.target_books * 100), 2) as books_progress,
+    ROUND((SUM(b.pages_read) / g.target_pages * 100), 2) as pages_progress
+FROM reading_goals g
+LEFT JOIN books b ON b.user_id = g.user_id 
+    AND YEAR(b.created_at) = g.year 
+    AND MONTH(b.created_at) = g.month
+WHERE g.user_id = 1 
+    AND g.goal_type = 'monthly'
+    AND g.year = YEAR(CURDATE())
+    AND g.month = MONTH(CURDATE())
+GROUP BY g.id;
+
+-- =====================================================
+-- INDEXES FOR BETTER PERFORMANCE
+-- =====================================================
+CREATE INDEX idx_user_books ON books(user_id);
+CREATE INDEX idx_book_genre ON books(genre);
+CREATE INDEX idx_book_created ON books(created_at);
+CREATE INDEX idx_goal_user ON reading_goals(user_id);

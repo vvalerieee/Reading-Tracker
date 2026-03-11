@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile - Reading Tracker</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <h2>📚 Reading Tracker</h2>
+            <div class="nav-menu">
+                <a href="dashboard.html">Dashboard</a>
+                <a href="my_books.html">My Books</a>
+                <a href="profile.html" class="active">Profile</a>
+            </div>
+            <div class="nav-actions">
+                <button id="darkModeToggle" class="btn-icon" title="Toggle Dark Mode">🌙</button>
+                <span id="userInfo" class="user-info"></span>
+                <button onclick="logout()" class="btn btn-secondary btn-small">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="profile-container">
+            <!-- Profile Card -->
+            <div class="profile-card">
+                <div class="profile-header">
+                    <div class="profile-picture-wrapper">
+                        <img id="profilePicture" src="uploads/default-avatar.png" alt="Profile Picture" class="profile-picture">
+                        <label for="profilePictureInput" class="profile-picture-upload" title="Upload Photo">
+    <input type="file" id="profilePictureInput" accept="image/*" onchange="uploadProfilePicture()" style="display: none;">
+</label>
+                    </div>
+                    <h2 id="profileUsername"></h2>
+                    <p id="profileEmail"></p>
+                </div>
+
+                <div class="profile-stats">
+                    <div class="profile-stat">
+                        <h3 id="totalBooks">0</h3>
+                        <p>Total Books</p>
+                    </div>
+                    <div class="profile-stat">
+                        <h3 id="completedBooks">0</h3>
+                        <p>Completed</p>
+                    </div>
+                    <div class="profile-stat">
+                        <h3 id="totalPages">0</h3>
+                        <p>Pages Read</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Account Settings -->
+            <div class="settings-card">
+                <h3>Account Settings</h3>
+                
+                <form id="updateProfileForm" onsubmit="updateProfile(event)">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" name="email" required>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Update Profile</button>
+                </form>
+
+                <hr style="margin: 30px 0; border: 1px solid var(--border);">
+
+                <h3>Change Password</h3>
+                <form id="changePasswordForm" onsubmit="changePassword(event)">
+                    <div class="form-group">
+                        <label for="current_password">Current Password</label>
+                        <input type="password" id="current_password" name="current_password" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="new_password">New Password</label>
+                        <input type="password" id="new_password" name="new_password" required minlength="6">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="confirm_password">Confirm New Password</label>
+                        <input type="password" id="confirm_password" name="confirm_password" required minlength="6">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Change Password</button>
+                </form>
+
+                <hr style="margin: 30px 0; border: 1px solid var(--border);">
+
+                <h3>Preferences</h3>
+                <div class="preference-item">
+                    <label>
+                        <input type="checkbox" id="darkModePreference" onchange="toggleDarkMode()">
+                        Enable Dark Mode
+                    </label>
+                </div>
+
+                <hr style="margin: 30px 0; border: 1px solid var(--border);">
+
+                <h3 style="color: var(--danger);">Danger Zone</h3>
+                <button onclick="deleteAccount()" class="btn btn-danger">Delete Account</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            checkAuth();
+            loadUserProfile();
+            loadUserStats();
+            initDarkMode();
+        });
+
+        function checkAuth() {
+            fetch('auth_check.php')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.authenticated) {
+                        window.location.href = 'login.html';
+                    }
+                })
+                .catch(() => {
+                    window.location.href = 'login.html';
+                });
+        }
+
+        function loadUserProfile() {
+            fetch('get_profile.php')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('profileUsername').textContent = data.user.username;
+                        document.getElementById('profileEmail').textContent = data.user.email;
+                        document.getElementById('userInfo').textContent = data.user.username;
+                        document.getElementById('username').value = data.user.username;
+                        document.getElementById('email').value = data.user.email;
+                        
+                        if (data.user.profile_picture) {
+                            document.getElementById('profilePicture').src = 'uploads/' + data.user.profile_picture;
+                        }
+                        
+                        document.getElementById('darkModePreference').checked = data.user.dark_mode;
+                    }
+                });
+        }
+
+        function loadUserStats() {
+            fetch('get_books.php')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const books = data.books;
+                        const total = books.length;
+                        const completed = books.filter(b => b.pages_read >= b.total_pages).length;
+                        const totalPages = books.reduce((sum, b) => sum + parseInt(b.pages_read), 0);
+                        
+                        document.getElementById('totalBooks').textContent = total;
+                        document.getElementById('completedBooks').textContent = completed;
+                        document.getElementById('totalPages').textContent = totalPages;
+                    }
+                });
+        }
+
+        function uploadProfilePicture() {
+            const input = document.getElementById('profilePictureInput');
+            const file = input.files[0];
+            
+            if (!file) return;
+            
+            // Validate file
+            const validation = validateImageFile(file);
+            if (!validation.valid) {
+                showMessage(validation.error, 'error');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('profile_picture', file);
+            
+            fetch('upload_profile_picture.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('profilePicture').src = 'uploads/' + data.filename + '?' + new Date().getTime();
+                    showMessage('Profile picture updated!', 'success');
+                } else {
+                    showMessage(data.message || 'Upload failed', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showMessage('Upload failed', 'error');
+            });
+        }
+
+        function updateProfile(event) {
+            event.preventDefault();
+            
+            const formData = new FormData(event.target);
+            
+            fetch('update_profile.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showMessage('Profile updated!', 'success');
+                    loadUserProfile();
+                } else {
+                    showMessage(data.message || 'Update failed', 'error');
+                }
+            });
+        }
+
+        function changePassword(event) {
+            event.preventDefault();
+            
+            const form = event.target;
+            const newPassword = form.new_password.value;
+            const confirmPassword = form.confirm_password.value;
+            
+            if (newPassword !== confirmPassword) {
+                showMessage('Passwords do not match!', 'error');
+                return;
+            }
+            
+            const formData = new FormData(form);
+            
+            fetch('change_password.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showMessage('Password changed!', 'success');
+                    form.reset();
+                } else {
+                    showMessage(data.message || 'Password change failed', 'error');
+                }
+            });
+        }
+
+        function toggleDarkMode() {
+            const enabled = document.getElementById('darkModePreference').checked;
+            
+            if (enabled) {
+                document.body.classList.add('dark-mode');
+            } else {
+                document.body.classList.remove('dark-mode');
+            }
+            
+            localStorage.setItem('darkMode', enabled);
+            document.getElementById('darkModeToggle').textContent = enabled ? '☀️' : '🌙';
+            
+            // Save to server
+            fetch('save_dark_mode.php', {
+                method: 'POST',
+                body: JSON.stringify({ dark_mode: enabled }),
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
+
+        function deleteAccount() {
+            const confirmed = confirm('⚠️ WARNING: This will permanently delete your account and ALL your books. This cannot be undone!\n\nAre you absolutely sure?');
+            
+            if (!confirmed) return;
+            
+            const doubleConfirm = prompt('Type "DELETE" to confirm account deletion:');
+            
+            if (doubleConfirm !== 'DELETE') {
+                showMessage('Account deletion cancelled', 'error');
+                return;
+            }
+            
+            fetch('delete_account.php', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Account deleted. You will be logged out.');
+                    window.location.href = 'login.html';
+                } else {
+                    showMessage(data.message || 'Deletion failed', 'error');
+                }
+            });
+        }
+
+        function logout() {
+            fetch('auth_logout.php')
+                .then(() => {
+                    window.location.href = 'login.html';
+                });
+        }
+
+        function initDarkMode() {
+            const toggle = document.getElementById('darkModeToggle');
+            const isDark = localStorage.getItem('darkMode') === 'true';
+            
+            if (isDark) {
+                document.body.classList.add('dark-mode');
+                toggle.textContent = '☀️';
+            }
+            
+            toggle.addEventListener('click', () => {
+                document.body.classList.toggle('dark-mode');
+                const nowDark = document.body.classList.contains('dark-mode');
+                localStorage.setItem('darkMode', nowDark);
+                toggle.textContent = nowDark ? '☀️' : '🌙';
+                document.getElementById('darkModePreference').checked = nowDark;
+            });
+        }
+    </script>
+</body>
+</html>
